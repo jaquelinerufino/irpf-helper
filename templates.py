@@ -472,6 +472,17 @@ HTML_PAGE = """
       }).format(value);
     }
 
+    function computeApplyValue(match) {
+      if (match.form_field === 'salary') {
+        // O valor extraído (ex.: "Rendimentos tributáveis" do informe) é o
+        // total ANUAL, mas o campo "salary" do formulário é o salário bruto
+        // MENSAL (o cálculo já multiplica por 12) — convertemos aqui pra não
+        // inflar o rendimento anual em 12x.
+        return Math.round((match.value / 12) * 100) / 100;
+      }
+      return match.value;
+    }
+
     const RECOMMENDED_LABELS = {
       simplified: 'Desconto Simplificado',
       complete: 'Deduções Completas',
@@ -713,7 +724,13 @@ HTML_PAGE = """
             if (match.form_field) {
               const useBtn = document.createElement('button');
               useBtn.type = 'button';
-              useBtn.textContent = match.form_field === 'deductions' ? 'Adicionar' : 'Usar este valor';
+              if (match.form_field === 'deductions') {
+                useBtn.textContent = 'Adicionar';
+              } else if (match.form_field === 'salary') {
+                useBtn.textContent = `Usar (mensal: ${formatMoney(computeApplyValue(match))})`;
+              } else {
+                useBtn.textContent = 'Usar este valor';
+              }
 
               const syncButtonState = () => {
                 if (!categorySelect) return;
@@ -759,7 +776,8 @@ HTML_PAGE = """
         return;
       }
 
-      const needsConfirmation = currentValue !== 0 && currentValue !== match.value;
+      const valueToApply = computeApplyValue(match);
+      const needsConfirmation = currentValue !== 0 && currentValue !== valueToApply;
 
       if (needsConfirmation && useBtn.dataset.confirmPending !== 'true') {
         useBtn.dataset.confirmPending = 'true';
@@ -767,7 +785,7 @@ HTML_PAGE = """
         return;
       }
 
-      targetInput.value = match.value;
+      targetInput.value = valueToApply;
       useBtn.textContent = 'Valor aplicado';
       useBtn.disabled = true;
     }
