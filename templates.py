@@ -242,6 +242,13 @@ HTML_PAGE = """
       background: white;
     }
 
+    .checklist-item .file-list {
+      flex-basis: 100%;
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
     .privacy-note {
       background: rgba(15, 91, 217, 0.06);
       border: 1px dashed rgba(15, 91, 217, 0.3);
@@ -369,7 +376,7 @@ HTML_PAGE = """
     <section class="panel" id="checklist-panel">
       <h2>Organizador de Documentos</h2>
       <div class="privacy-note">
-        Os arquivos anexados aqui ficam apenas no seu navegador durante esta sessão — nada é enviado nem armazenado no servidor. Apenas o nome do arquivo é incluído no relatório final.
+        Você pode anexar mais de um arquivo por categoria. Os arquivos ficam apenas no seu navegador durante esta sessão — nada é enviado nem armazenado no servidor. Apenas os nomes dos arquivos são incluídos no relatório final.
       </div>
       <div id="checklist-container"></div>
     </section>
@@ -511,11 +518,22 @@ HTML_PAGE = """
 
           const fileInput = document.createElement('input');
           fileInput.type = 'file';
+          fileInput.multiple = true;
           fileInput.dataset.categoryId = category.id;
+
+          const fileList = document.createElement('div');
+          fileList.className = 'file-list';
+          fileList.dataset.categoryId = category.id;
+
+          fileInput.addEventListener('change', () => {
+            const names = Array.from(fileInput.files).map((file) => file.name);
+            fileList.textContent = names.length > 0 ? names.join(', ') : '';
+          });
 
           item.appendChild(checkbox);
           item.appendChild(label);
           item.appendChild(fileInput);
+          item.appendChild(fileList);
           groupDiv.appendChild(item);
         });
 
@@ -530,7 +548,7 @@ HTML_PAGE = """
         return {
           id: category.id,
           checked: checkbox ? checkbox.checked : false,
-          fileName: fileInput && fileInput.files.length > 0 ? fileInput.files[0].name : null,
+          fileNames: fileInput ? Array.from(fileInput.files).map((file) => file.name) : [],
         };
       });
     }

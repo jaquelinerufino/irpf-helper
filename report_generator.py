@@ -26,8 +26,9 @@ def _checklist_rows(checklist_state: List[Dict[str, Any]]) -> List[List[str]]:
     for category in DOCUMENT_CATEGORIES:
         item = state_by_id.get(category["id"], {})
         checked = "Sim" if item.get("checked") else "Não"
-        file_name = item.get("fileName") or "-"
-        rows.append([category["group"], category["label"], checked, file_name])
+        file_names = item.get("fileNames") or []
+        file_names_text = ", ".join(file_names) if file_names else "-"
+        rows.append([category["group"], category["label"], checked, file_names_text])
     return rows
 
 
