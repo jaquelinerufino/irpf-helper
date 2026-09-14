@@ -3,7 +3,7 @@ import json
 import azure.functions as func
 
 from document_checklist import get_checklist_definition
-from document_extractor import MAX_FILES_PER_REQUEST, MAX_FILE_SIZE_BYTES, extract_from_files
+from document_extractor import MAX_FILE_SIZE_BYTES, MAX_FILES_PER_REQUEST, extract_from_files
 from irpf_calc import compare_models
 from report_generator import generate_excel_report, generate_pdf_report
 from templates import HTML_PAGE

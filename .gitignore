@@ -222,3 +222,6 @@ __marimo__/
 
 # Azure Functions local config (may contain secrets/connection strings)
 local.settings.json
+
+# PDFs de exemplo/teste — podem conter dados pessoais reais (CPF, salário, etc.)
+example/
