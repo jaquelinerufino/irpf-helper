@@ -64,6 +64,7 @@ def _extract_inputs(payload: Dict[str, Any]) -> Dict[str, float]:
         "extra_income": _to_non_negative_float(payload.get("extraIncome", 0) or 0, "extraIncome"),
         "deductions": _to_non_negative_float(payload.get("deductions", 0) or 0, "deductions"),
         "inss": _to_non_negative_float(payload.get("inss", 0) or 0, "inss"),
+        "irrf": _to_non_negative_float(payload.get("irrf", 0) or 0, "irrf"),
         "pension": _to_non_negative_float(payload.get("pension", 0) or 0, "pension"),
         "dependents": _to_non_negative_int(payload.get("dependents", 0) or 0, "dependents"),
     }
@@ -127,6 +128,13 @@ def compare_models(payload: Dict[str, Any]) -> Dict[str, Any]:
         inputs["dependents"],
     )
 
+    # Saldo final = imposto devido no ano menos o que já foi retido na fonte
+    # (IRRF) pela fonte pagadora. Positivo = falta pagar; negativo = valor a
+    # restituir. O IRRF já retido não muda o imposto devido em si (isso
+    # depende só da base tributável de cada modelo), só o saldo final.
+    simplified["balance"] = round_money(simplified["tax_amount"] - inputs["irrf"])
+    complete["balance"] = round_money(complete["tax_amount"] - inputs["irrf"])
+
     if simplified["tax_amount"] < complete["tax_amount"]:
         recommended = "simplified"
         difference = complete["tax_amount"] - simplified["tax_amount"]
@@ -139,6 +147,7 @@ def compare_models(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "annual_income": round_money(annual_income),
+        "irrf": round_money(inputs["irrf"]),
         "simplified": simplified,
         "complete": complete,
         "recommended": recommended,

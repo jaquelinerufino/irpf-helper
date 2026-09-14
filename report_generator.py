@@ -20,6 +20,14 @@ RECOMMENDED_LABELS = {
 }
 
 
+def _format_balance(balance: float) -> str:
+    if balance > 0:
+        return f"{format_currency(balance)} (a pagar)"
+    if balance < 0:
+        return f"{format_currency(abs(balance))} (a restituir)"
+    return f"{format_currency(0)} (quitado)"
+
+
 def _checklist_rows(checklist_state: List[Dict[str, Any]]) -> List[List[str]]:
     state_by_id = {item.get("id"): item for item in checklist_state}
     rows = []
@@ -51,6 +59,7 @@ def generate_pdf_report(calc_result: Dict[str, Any], checklist_state: List[Dict[
         ["Base tributável", format_currency(simplified["taxable_base"]), format_currency(complete["taxable_base"])],
         ["Imposto estimado", format_currency(simplified["tax_amount"]), format_currency(complete["tax_amount"])],
         ["Alíquota efetiva", f"{simplified['effective_rate']:.2f}%", f"{complete['effective_rate']:.2f}%"],
+        ["Saldo (após IRRF retido)", _format_balance(simplified["balance"]), _format_balance(complete["balance"])],
     ]
     table = Table(comparison_data, colWidths=[4 * cm, 6 * cm, 6 * cm])
     table.setStyle(
@@ -139,6 +148,9 @@ def generate_excel_report(calc_result: Dict[str, Any], checklist_state: List[Dic
     comparison_sheet.append(["Imposto estimado", simplified["tax_amount"], complete["tax_amount"]])
     comparison_sheet.append(
         ["Alíquota efetiva (%)", simplified["effective_rate"], complete["effective_rate"]]
+    )
+    comparison_sheet.append(
+        ["Saldo (após IRRF retido)", _format_balance(simplified["balance"]), _format_balance(complete["balance"])]
     )
     for cell in comparison_sheet[1]:
         cell.font = bold

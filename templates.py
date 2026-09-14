@@ -180,6 +180,10 @@ HTML_PAGE = """
       color: var(--danger);
     }
 
+    .value.positive {
+      color: var(--accent);
+    }
+
     .model-column h3 {
       margin: 0 0 12px;
       font-size: 1.05rem;
@@ -376,6 +380,13 @@ HTML_PAGE = """
             </div>
           </div>
 
+          <div class="row">
+            <div>
+              <label for="irrf">IRRF retido na fonte (ano todo)</label>
+              <input id="irrf" name="irrf" type="number" min="0" step="0.01" value="0" />
+            </div>
+          </div>
+
           <div class="button-wrap">
             <button type="submit">Calcular IRPF</button>
             <button type="button" class="secondary" id="fill-example">Usar exemplo</button>
@@ -404,6 +415,10 @@ HTML_PAGE = """
               <strong>Alíquota efetiva</strong>
               <div class="value" id="simplified-rate">0,00%</div>
             </div>
+            <div class="card">
+              <strong id="simplified-balance-label">Saldo</strong>
+              <div class="value" id="simplified-balance">R$ 0,00</div>
+            </div>
           </div>
           <div class="model-column">
             <h3>Deduções Completas</h3>
@@ -418,6 +433,10 @@ HTML_PAGE = """
             <div class="card">
               <strong>Alíquota efetiva</strong>
               <div class="value" id="complete-rate">0,00%</div>
+            </div>
+            <div class="card">
+              <strong id="complete-balance-label">Saldo</strong>
+              <div class="value" id="complete-balance">R$ 0,00</div>
             </div>
           </div>
         </div>
@@ -472,6 +491,12 @@ HTML_PAGE = """
       }).format(value);
     }
 
+    const ADDITIVE_FORM_FIELDS = new Set(['deductions', 'irrf']);
+
+    function isAdditiveField(formField) {
+      return ADDITIVE_FORM_FIELDS.has(formField);
+    }
+
     function computeApplyValue(match) {
       if (match.form_field === 'salary') {
         // O valor extraído (ex.: "Rendimentos tributáveis" do informe) é o
@@ -489,14 +514,35 @@ HTML_PAGE = """
       equal: 'Empate entre os modelos'
     };
 
+    function setBalance(prefix, balance) {
+      const labelEl = document.getElementById(`${prefix}-balance-label`);
+      const valueEl = document.getElementById(`${prefix}-balance`);
+      valueEl.classList.remove('positive', 'negative');
+
+      if (balance > 0) {
+        labelEl.textContent = 'Saldo a pagar';
+        valueEl.classList.add('negative');
+        valueEl.textContent = formatMoney(balance);
+      } else if (balance < 0) {
+        labelEl.textContent = 'Saldo a restituir';
+        valueEl.classList.add('positive');
+        valueEl.textContent = formatMoney(Math.abs(balance));
+      } else {
+        labelEl.textContent = 'Saldo';
+        valueEl.textContent = formatMoney(0);
+      }
+    }
+
     function setComparison(data) {
       document.getElementById('simplified-base').textContent = formatMoney(data.simplified.taxable_base);
       document.getElementById('simplified-tax').textContent = formatMoney(data.simplified.tax_amount);
       document.getElementById('simplified-rate').textContent = `${Number(data.simplified.effective_rate).toFixed(2)}%`;
+      setBalance('simplified', data.simplified.balance);
 
       document.getElementById('complete-base').textContent = formatMoney(data.complete.taxable_base);
       document.getElementById('complete-tax').textContent = formatMoney(data.complete.tax_amount);
       document.getElementById('complete-rate').textContent = `${Number(data.complete.effective_rate).toFixed(2)}%`;
+      setBalance('complete', data.complete.balance);
 
       const banner = document.getElementById('comparison-banner');
       banner.classList.remove('hidden');
@@ -519,6 +565,7 @@ HTML_PAGE = """
         inss: Number(document.getElementById('inss').value || 0),
         dependents: Number(document.getElementById('dependents').value || 0),
         pension: Number(document.getElementById('pension').value || 0),
+        irrf: Number(document.getElementById('irrf').value || 0),
       };
     }
 
@@ -550,6 +597,7 @@ HTML_PAGE = """
       document.getElementById('inss').value = 1800;
       document.getElementById('dependents').value = 1;
       document.getElementById('pension').value = 0;
+      document.getElementById('irrf').value = 900;
       form.requestSubmit();
     });
 
@@ -724,7 +772,7 @@ HTML_PAGE = """
             if (match.form_field) {
               const useBtn = document.createElement('button');
               useBtn.type = 'button';
-              if (match.form_field === 'deductions') {
+              if (isAdditiveField(match.form_field)) {
                 useBtn.textContent = 'Adicionar';
               } else if (match.form_field === 'salary') {
                 useBtn.textContent = `Usar (mensal: ${formatMoney(computeApplyValue(match))})`;
@@ -766,10 +814,11 @@ HTML_PAGE = """
 
       const currentValue = Number(targetInput.value || 0);
 
-      if (match.form_field === 'deductions') {
-        // Deduções se acumulam (saúde + previdência + outras), então soma em
-        // vez de substituir — diferente de campos de valor único como
-        // salário/INSS, onde substituir com confirmação continua fazendo sentido.
+      if (isAdditiveField(match.form_field)) {
+        // Deduções e IRRF se acumulam (podem vir de várias fontes — saúde,
+        // previdência, mais de um informe de banco), então somam em vez de
+        // substituir — diferente de campos de valor único como salário/INSS,
+        // onde substituir com confirmação continua fazendo sentido.
         targetInput.value = Math.round((currentValue + match.value) * 100) / 100;
         useBtn.textContent = 'Adicionado';
         useBtn.disabled = true;

@@ -48,7 +48,7 @@ CATEGORY_FIELD_PATTERNS: Dict[str, List[Dict[str, Any]]] = {
         },
         {
             "field": "irrf",
-            "form_field": None,
+            "form_field": "irrf",
             "label": "Imposto Retido na Fonte",
             "patterns": [
                 rf"imposto\s+(?:de\s+renda\s+)?retido\s+na\s+fonte{_GAP}{_MONEY}",
@@ -68,7 +68,7 @@ CATEGORY_FIELD_PATTERNS: Dict[str, List[Dict[str, Any]]] = {
         },
         {
             "field": "irrf",
-            "form_field": None,
+            "form_field": "irrf",
             "label": "IRRF sobre aplicações",
             "patterns": [
                 rf"imposto\s+(?:de\s+renda\s+)?retido\s+na\s+fonte{_GAP}{_MONEY}",
