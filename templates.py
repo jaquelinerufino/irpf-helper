@@ -483,6 +483,7 @@ HTML_PAGE = """
 
     let lastCalculationInputs = null;
     let checklistCategories = [];
+    let appliedItems = [];
 
     function formatMoney(value) {
       return new Intl.NumberFormat('pt-BR', {
@@ -491,7 +492,7 @@ HTML_PAGE = """
       }).format(value);
     }
 
-    const ADDITIVE_FORM_FIELDS = new Set(['deductions', 'irrf']);
+    const ADDITIVE_FORM_FIELDS = new Set(['deductions', 'irrf', 'extraIncome']);
 
     function isAdditiveField(formField) {
       return ADDITIVE_FORM_FIELDS.has(formField);
@@ -789,7 +790,7 @@ HTML_PAGE = """
                 categorySelect.addEventListener('change', syncButtonState);
               }
 
-              useBtn.addEventListener('click', () => applyExtractedValue(match, useBtn));
+              useBtn.addEventListener('click', () => applyExtractedValue(match, useBtn, categorySelect));
               matchRow.appendChild(useBtn);
             }
 
@@ -808,20 +809,36 @@ HTML_PAGE = """
       });
     }
 
-    function applyExtractedValue(match, useBtn) {
+    function recordAppliedItem(match, value, categorySelect) {
+      let categoryLabel = null;
+      if (categorySelect && categorySelect.value) {
+        const chosen = (match.category_options || []).find((opt) => opt.id === categorySelect.value);
+        categoryLabel = chosen ? chosen.label : categorySelect.value;
+      }
+      appliedItems.push({
+        label: match.label,
+        value,
+        form_field: match.form_field,
+        category: categoryLabel,
+      });
+    }
+
+    function applyExtractedValue(match, useBtn, categorySelect) {
       const targetInput = document.getElementById(match.form_field);
       if (!targetInput) return;
 
       const currentValue = Number(targetInput.value || 0);
 
       if (isAdditiveField(match.form_field)) {
-        // Deduções e IRRF se acumulam (podem vir de várias fontes — saúde,
-        // previdência, mais de um informe de banco), então somam em vez de
-        // substituir — diferente de campos de valor único como salário/INSS,
-        // onde substituir com confirmação continua fazendo sentido.
+        // Deduções, IRRF e rendimentos extras se acumulam (podem vir de
+        // várias fontes — saúde, previdência, mais de um informe de banco/
+        // corretora), então somam em vez de substituir — diferente de
+        // campos de valor único como salário, onde substituir com
+        // confirmação continua fazendo sentido.
         targetInput.value = Math.round((currentValue + match.value) * 100) / 100;
         useBtn.textContent = 'Adicionado';
         useBtn.disabled = true;
+        recordAppliedItem(match, match.value, categorySelect);
         return;
       }
 
@@ -837,6 +854,7 @@ HTML_PAGE = """
       targetInput.value = valueToApply;
       useBtn.textContent = 'Valor aplicado';
       useBtn.disabled = true;
+      recordAppliedItem(match, valueToApply, categorySelect);
     }
 
     function collectChecklistState() {
@@ -866,6 +884,7 @@ HTML_PAGE = """
       const payload = {
         calculation: lastCalculationInputs,
         checklist: collectChecklistState(),
+        items: appliedItems,
         format,
       };
 

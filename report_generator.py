@@ -19,6 +19,14 @@ RECOMMENDED_LABELS = {
     "equal": "Empate entre os modelos",
 }
 
+_FORM_FIELD_LABELS = {
+    "salary": "Salário",
+    "extraIncome": "Rendimentos extras",
+    "deductions": "Deduções",
+    "irrf": "IRRF retido",
+    "inss": "Contribuição INSS",
+}
+
 
 def _format_balance(balance: float) -> str:
     if balance > 0:
@@ -26,6 +34,68 @@ def _format_balance(balance: float) -> str:
     if balance < 0:
         return f"{format_currency(abs(balance))} (a restituir)"
     return f"{format_currency(0)} (quitado)"
+
+
+def _declaration_rows(calculation: Dict[str, Any]) -> List[List[str]]:
+    """Cada campo que o usuário preencheu, mapeado pra ficha da Receita onde
+    ele entra — o resumo que a pessoa realmente usa na hora de declarar."""
+    calculation = calculation or {}
+    salary_monthly = float(calculation.get("salary") or 0)
+    return [
+        [
+            "Salário bruto",
+            f"{format_currency(salary_monthly)}/mês ({format_currency(salary_monthly * 12)}/ano)",
+            "Rendimentos Tributáveis Recebidos de Pessoas Jurídicas",
+        ],
+        [
+            "Rendimentos extras anuais",
+            format_currency(float(calculation.get("extraIncome") or 0)),
+            "Rendimentos Sujeitos à Tributação Exclusiva/Definitiva ou Isentos (conforme a natureza)",
+        ],
+        [
+            "Contribuição INSS",
+            format_currency(float(calculation.get("inss") or 0)),
+            "Dedução na Ficha de Rendimentos de Pessoas Jurídicas",
+        ],
+        [
+            "IRRF retido na fonte",
+            format_currency(float(calculation.get("irrf") or 0)),
+            "Imposto Retido na Fonte, na Ficha de Rendimentos",
+        ],
+        [
+            "Deduções gerais",
+            format_currency(float(calculation.get("deductions") or 0)),
+            "Ficha Pagamentos Efetuados",
+        ],
+        [
+            "Pensão alimentícia / outros descontos",
+            format_currency(float(calculation.get("pension") or 0)),
+            "Ficha Pagamentos Efetuados",
+        ],
+        [
+            "Número de dependentes",
+            str(int(calculation.get("dependents") or 0)),
+            "Ficha Dependentes",
+        ],
+    ]
+
+
+def _applied_items_rows(items: List[Dict[str, Any]]) -> List[List[str]]:
+    """Itens específicos que o usuário confirmou durante a extração dos
+    informes (ex.: cada recibo de saúde, cada rendimento de banco), com a
+    classificação que ele escolheu quando havia ambiguidade."""
+    rows = []
+    for item in items or []:
+        field_label = _FORM_FIELD_LABELS.get(item.get("form_field"), item.get("form_field") or "-")
+        rows.append(
+            [
+                item.get("label") or "-",
+                format_currency(float(item.get("value") or 0)),
+                field_label,
+                item.get("category") or "-",
+            ]
+        )
+    return rows
 
 
 def _checklist_rows(checklist_state: List[Dict[str, Any]]) -> List[List[str]]:
@@ -40,7 +110,12 @@ def _checklist_rows(checklist_state: List[Dict[str, Any]]) -> List[List[str]]:
     return rows
 
 
-def generate_pdf_report(calc_result: Dict[str, Any], checklist_state: List[Dict[str, Any]]) -> bytes:
+def generate_pdf_report(
+    calc_result: Dict[str, Any],
+    checklist_state: List[Dict[str, Any]],
+    calculation: Dict[str, Any] = None,
+    items: List[Dict[str, Any]] = None,
+) -> bytes:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
     styles = getSampleStyleSheet()
@@ -88,6 +163,47 @@ def generate_pdf_report(calc_result: Dict[str, Any], checklist_state: List[Dict[
     story.append(Paragraph(recommendation_text, styles["Normal"]))
     story.append(Spacer(1, 0.6 * cm))
 
+    story.append(Paragraph("Resumo para a Declaração", styles["Heading2"]))
+    declaration_data = [["Campo", "Valor", "Onde declarar"]] + _declaration_rows(calculation)
+    declaration_table = Table(declaration_data, colWidths=[4.5 * cm, 5.5 * cm, 6 * cm])
+    declaration_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f5bd9")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#dfe7f1")),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fbff")]),
+            ]
+        )
+    )
+    story.append(declaration_table)
+    story.append(Spacer(1, 0.6 * cm))
+
+    item_rows = _applied_items_rows(items)
+    if item_rows:
+        story.append(Paragraph("Itens Detalhados dos Informes", styles["Heading2"]))
+        small_style = styles["Normal"].clone("small")
+        small_style.fontSize = 8
+        item_rows = [[Paragraph(row[0], small_style), *row[1:]] for row in item_rows]
+        items_data = [["Item", "Valor", "Campo", "Classificação"]] + item_rows
+        items_table = Table(items_data, colWidths=[7 * cm, 3 * cm, 3 * cm, 3 * cm])
+        items_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1ba97f")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#dfe7f1")),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fbff")]),
+                ]
+            )
+        )
+        story.append(items_table)
+        story.append(Spacer(1, 0.6 * cm))
+
     story.append(Paragraph("Organizador de Documentos", styles["Heading2"]))
     checklist_data = [["Grupo", "Documento", "Marcado", "Arquivo anexado"]] + _checklist_rows(checklist_state)
     checklist_table = Table(checklist_data, colWidths=[3 * cm, 7 * cm, 2.5 * cm, 3.5 * cm])
@@ -119,7 +235,12 @@ def generate_pdf_report(calc_result: Dict[str, Any], checklist_state: List[Dict[
     return buffer.getvalue()
 
 
-def generate_excel_report(calc_result: Dict[str, Any], checklist_state: List[Dict[str, Any]]) -> bytes:
+def generate_excel_report(
+    calc_result: Dict[str, Any],
+    checklist_state: List[Dict[str, Any]],
+    calculation: Dict[str, Any] = None,
+    items: List[Dict[str, Any]] = None,
+) -> bytes:
     workbook = Workbook()
     bold = Font(bold=True)
 
@@ -155,14 +276,34 @@ def generate_excel_report(calc_result: Dict[str, Any], checklist_state: List[Dic
     for cell in comparison_sheet[1]:
         cell.font = bold
 
+    declaration_sheet = workbook.create_sheet("Declaração")
+    declaration_sheet.append(["Campo", "Valor", "Onde declarar"])
+    for cell in declaration_sheet[1]:
+        cell.font = bold
+    for row in _declaration_rows(calculation):
+        declaration_sheet.append(row)
+
+    sheets = [summary_sheet, comparison_sheet, declaration_sheet]
+
+    item_rows = _applied_items_rows(items)
+    if item_rows:
+        items_sheet = workbook.create_sheet("Itens Detalhados")
+        items_sheet.append(["Item", "Valor", "Campo", "Classificação"])
+        for cell in items_sheet[1]:
+            cell.font = bold
+        for row in item_rows:
+            items_sheet.append(row)
+        sheets.append(items_sheet)
+
     checklist_sheet = workbook.create_sheet("Checklist")
     checklist_sheet.append(["Grupo", "Documento", "Marcado", "Arquivo anexado"])
     for cell in checklist_sheet[1]:
         cell.font = bold
     for row in _checklist_rows(checklist_state):
         checklist_sheet.append(row)
+    sheets.append(checklist_sheet)
 
-    for sheet in (summary_sheet, comparison_sheet, checklist_sheet):
+    for sheet in sheets:
         for column_cells in sheet.columns:
             length = max(len(str(cell.value)) if cell.value is not None else 0 for cell in column_cells)
             sheet.column_dimensions[column_cells[0].column_letter].width = min(max(length + 2, 12), 40)

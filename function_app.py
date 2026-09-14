@@ -88,13 +88,15 @@ def report(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     checklist_state = payload.get("checklist", [])
+    calculation = payload.get("calculation", {})
+    items = payload.get("items", [])
 
     if fmt == "pdf":
-        content = generate_pdf_report(calc_result, checklist_state)
+        content = generate_pdf_report(calc_result, checklist_state, calculation, items)
         mimetype = "application/pdf"
         filename = "resumo-irpf.pdf"
     else:
-        content = generate_excel_report(calc_result, checklist_state)
+        content = generate_excel_report(calc_result, checklist_state, calculation, items)
         mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         filename = "resumo-irpf.xlsx"
 
