@@ -295,6 +295,13 @@ HTML_PAGE = """
       font-size: 0.78rem;
     }
 
+    .extract-result .extract-category-select {
+      font-size: 0.78rem;
+      padding: 3px 6px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
     .extract-result .extract-message {
       color: var(--muted);
     }
@@ -682,10 +689,41 @@ HTML_PAGE = """
             matchLabel.textContent = `${match.label}: ${formatMoney(match.value)}`;
             matchRow.appendChild(matchLabel);
 
+            let categorySelect = null;
+            if (match.category_options) {
+              categorySelect = document.createElement('select');
+              categorySelect.className = 'extract-category-select';
+
+              const placeholder = document.createElement('option');
+              placeholder.value = '';
+              placeholder.textContent = 'Escolha...';
+              categorySelect.appendChild(placeholder);
+
+              match.category_options.forEach((opt) => {
+                const optionEl = document.createElement('option');
+                optionEl.value = opt.id;
+                optionEl.textContent = opt.label;
+                categorySelect.appendChild(optionEl);
+              });
+
+              categorySelect.value = match.category_guess || '';
+              matchRow.appendChild(categorySelect);
+            }
+
             if (match.form_field) {
               const useBtn = document.createElement('button');
               useBtn.type = 'button';
-              useBtn.textContent = 'Usar este valor';
+              useBtn.textContent = match.form_field === 'deductions' ? 'Adicionar' : 'Usar este valor';
+
+              const syncButtonState = () => {
+                if (!categorySelect) return;
+                useBtn.disabled = !categorySelect.value || categorySelect.value === 'outro';
+              };
+              if (categorySelect) {
+                syncButtonState();
+                categorySelect.addEventListener('change', syncButtonState);
+              }
+
               useBtn.addEventListener('click', () => applyExtractedValue(match, useBtn));
               matchRow.appendChild(useBtn);
             }
@@ -710,6 +748,17 @@ HTML_PAGE = """
       if (!targetInput) return;
 
       const currentValue = Number(targetInput.value || 0);
+
+      if (match.form_field === 'deductions') {
+        // Deduções se acumulam (saúde + previdência + outras), então soma em
+        // vez de substituir — diferente de campos de valor único como
+        // salário/INSS, onde substituir com confirmação continua fazendo sentido.
+        targetInput.value = Math.round((currentValue + match.value) * 100) / 100;
+        useBtn.textContent = 'Adicionado';
+        useBtn.disabled = true;
+        return;
+      }
+
       const needsConfirmation = currentValue !== 0 && currentValue !== match.value;
 
       if (needsConfirmation && useBtn.dataset.confirmPending !== 'true') {

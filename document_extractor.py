@@ -1,5 +1,7 @@
 import io
+import json
 import logging
+import os
 import re
 from typing import Any, Dict, List, Optional
 
@@ -110,19 +112,183 @@ CATEGORY_FIELD_PATTERNS: Dict[str, List[Dict[str, Any]]] = {
 _MONEY_PLAIN = rf"({_MONEY_NUMBER})"
 
 
-def _find_section(text: str, start_pattern: str) -> Optional[str]:
+def _find_section(
+    text: str, start_pattern: str, end_pattern: Optional[str] = None
+) -> Optional[str]:
     """Retorna o texto entre o primeiro título que casa com start_pattern e o
     próximo título de seção (outra "Ficha da Declaração:" ou um item numerado
-    tipo "3. Dívidas..."), ou None se start_pattern não for encontrado."""
+    tipo "3. Dívidas..."), ou None se start_pattern não for encontrado.
+    end_pattern permite sobrescrever o limite de fim — necessário quando a
+    seção em si tem itens numerados dentro dela (ex.: "01.", "02."), que o
+    padrão genérico confundiria com o início da próxima seção."""
     start_match = re.search(start_pattern, text, re.IGNORECASE)
     if not start_match:
         return None
     start = start_match.end()
     end_match = re.search(
-        r"Ficha da Declara[çc][ãa]o:|\n\s*\d+\.\s+[A-ZÀ-Ú]", text[start:]
+        end_pattern or r"Ficha da Declara[çc][ãa]o:|\n\s*\d+\.\s+[A-ZÀ-Ú]", text[start:]
     )
     end = start + end_match.start() if end_match else len(text)
     return text[start:end]
+
+
+# O Quadro "Informações Complementares" é uma seção padrão dos informes de
+# rendimentos de empregador no Brasil — lista itens numerados adicionais
+# (coparticipação de plano de saúde, contribuição a previdência privada,
+# notas informativas, etc.) que hoje não são capturados por nenhuma regra de
+# categoria. Cada item pode ser uma dedução de saúde ou de previdência
+# privada — como isso não dá pra saber sempre só pelo texto, classificamos
+# por palavra-chave quando possível e deixamos o resto para a LLM/usuário.
+_COMPLEMENTARY_CATEGORY_OPTIONS = [
+    {"id": "recibos_saude", "label": "Despesa de saúde"},
+    {"id": "previdencia_privada", "label": "Previdência privada (PGBL)"},
+    {"id": "outro", "label": "Não é dedução"},
+]
+
+_HEALTH_KEYWORDS = re.compile(r"ODONTO|M[EÉ]DIC|SA[UÚ]DE|HOSPITAL|CL[IÍ]NIC", re.IGNORECASE)
+_PENSION_KEYWORDS = re.compile(r"PREVID[EÊ]NC|PGBL|VGBL|\bFAPI\b", re.IGNORECASE)
+
+
+def _guess_complementary_category(label: str) -> Optional[str]:
+    is_health = bool(_HEALTH_KEYWORDS.search(label))
+    is_pension = bool(_PENSION_KEYWORDS.search(label))
+    if is_health and not is_pension:
+        return "recibos_saude"
+    if is_pension and not is_health:
+        return "previdencia_privada"
+    return None
+
+
+def _extract_complementary_items(text: str) -> List[Dict[str, Any]]:
+    """Extrai os itens numerados do Quadro "Informações Complementares" (ex.:
+    coparticipação odontológica, contribuição PGBL) com valor > 0, tentando
+    classificar cada um por palavra-chave. O rótulo bruto do item vira o
+    `label` exibido ao usuário, já que ele mesmo consegue reconhecer do que
+    se trata mesmo quando o sistema não consegue."""
+    section = _find_section(
+        text,
+        start_pattern=r"[1-9]\d?\.\s*-?\s*Informa[çc][õo]es\s+Complementares",
+        end_pattern=r"Ficha da Declara[çc][ãa]o:|\n\s*[1-9]\d?\.\s*-?\s*[A-ZÀ-Ú]",
+    )
+    if not section:
+        return []
+
+    items = []
+    item_pattern = re.compile(r"(?m)^(\d{2})\.\s+(.*?)(?=^\d{2}\.\s|\Z)", re.DOTALL)
+    for idx, match in enumerate(item_pattern.finditer(section)):
+        block = match.group(2)
+        money_matches = list(re.finditer(_MONEY_NUMBER, block))
+        if not money_matches:
+            continue
+        last_money = money_matches[-1]
+        value = parse_brl_number(last_money.group(0))
+        if value is None or value <= 0:
+            continue
+        label = re.sub(r"\s+", " ", block[: last_money.start()]).strip()
+        if not label:
+            continue
+        items.append(
+            {
+                "field": f"complementar_{idx}",
+                "form_field": "deductions",
+                "label": label,
+                "value": value,
+                "raw_match": last_money.group(0),
+                "category_guess": _guess_complementary_category(label),
+                "category_options": _COMPLEMENTARY_CATEGORY_OPTIONS,
+            }
+        )
+    return items
+
+
+def _build_classification_prompt(items: List[Dict[str, str]]) -> str:
+    lines = "\n".join(f"- {item['field']}: {item['label']}" for item in items)
+    return (
+        "Classifique cada item abaixo, extraído do quadro \"Informações "
+        "Complementares\" de um informe de rendimentos brasileiro, em uma "
+        "destas categorias:\n"
+        "- recibos_saude: despesa médica ou odontológica (plano de saúde, "
+        "coparticipação, consulta, exame etc.)\n"
+        "- previdencia_privada: contribuição a entidade de previdência "
+        "complementar (PGBL, VGBL, FAPI etc.)\n"
+        "- outro: não é nenhuma das duas (ex.: nota informativa, PLR, "
+        "indenização)\n\n"
+        f"{lines}"
+    )
+
+
+_CLASSIFICATION_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "classify_items",
+        "description": (
+            "Registra a classificação de cada item do quadro de informações "
+            "complementares de um informe de rendimentos."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "classifications": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "field": {"type": "string"},
+                            "category": {
+                                "type": "string",
+                                "enum": ["recibos_saude", "previdencia_privada", "outro"],
+                            },
+                        },
+                        "required": ["field", "category"],
+                    },
+                }
+            },
+            "required": ["classifications"],
+        },
+    },
+}
+
+
+def _classify_ambiguous_items_with_llm(items: List[Dict[str, str]]) -> Dict[str, str]:
+    """Classifica, via Azure OpenAI, itens que a palavra-chave não resolveu.
+    items: [{"field": ..., "label": ...}]. Retorna {field: category_id} —
+    só os que a LLM conseguiu classificar. Nunca lança exceção: se as
+    variáveis de ambiente não estiverem configuradas ou a chamada falhar,
+    retorna {} e o item fica sem category_guess (o usuário escolhe na UI)."""
+    endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
+    deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT")
+    if not endpoint or not deployment or not items:
+        return {}
+
+    try:
+        from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+        from openai import OpenAI
+
+        token_provider = get_bearer_token_provider(
+            DefaultAzureCredential(), "https://ai.azure.com/.default"
+        )
+        client = OpenAI(
+            base_url=f"{endpoint.rstrip('/')}/openai/v1/",
+            api_key=token_provider,
+        )
+        response = client.with_options(timeout=15.0).chat.completions.create(
+            model=deployment,
+            messages=[{"role": "user", "content": _build_classification_prompt(items)}],
+            tools=[_CLASSIFICATION_TOOL],
+            tool_choice={"type": "function", "function": {"name": "classify_items"}},
+        )
+        tool_calls = response.choices[0].message.tool_calls
+        if not tool_calls:
+            return {}
+        args = json.loads(tool_calls[0].function.arguments)
+        return {
+            c["field"]: c["category"]
+            for c in args.get("classifications", [])
+            if c.get("field") and c.get("category")
+        }
+    except Exception:
+        logging.exception("Falha ao classificar itens complementares via Azure OpenAI.")
+        return {}
 
 
 def _extract_bank_totals_table(text: str) -> Optional[Dict[str, float]]:
@@ -316,6 +482,17 @@ def extract_fields_for_category(category_id: str, text: str) -> List[Dict[str, A
 
     if category_id == "informe_bancos":
         matches.extend(_extract_bank_table_fields(text, matches))
+
+    complementary = _extract_complementary_items(text)
+    if complementary:
+        unclassified = [item for item in complementary if item["category_guess"] is None]
+        llm_guesses = _classify_ambiguous_items_with_llm(
+            [{"field": item["field"], "label": item["label"]} for item in unclassified]
+        )
+        for item in complementary:
+            if item["category_guess"] is None:
+                item["category_guess"] = llm_guesses.get(item["field"])
+        matches.extend(complementary)
 
     return matches
 

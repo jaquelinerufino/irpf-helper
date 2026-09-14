@@ -116,3 +116,82 @@ def test_informe_bancos_reversed_label_uses_value_before_label():
 
 def test_unknown_category_returns_no_matches():
     assert extract_fields_for_category("categoria_inexistente", "qualquer texto") == []
+
+
+_QUADRO_7_TEXT = """
+  7. - Informações Complementares
+01. ASS.ODONTO.COPARTICI           - TITULAR - ODONTOPREV S/A - CNPJ: 58.119.199/0001-51         52,74
+02. KPMG PREV SOC. PREVID PRIVADA  / CONTRIBUIÇÃO À PREVIDÊNCIA PRIVADA / CNPJ:  03.898.918/000
+1-98      4.231,50
+03. ASSIST.MED.COPARTICI           - TITULAR - BRADESCO SAÚDE S/A - CNPJ: 92.693.118/0001-60      1.602,04
+04. O total informado na linha 03 do Quadro 5 já inclui o  valor total pago a título de  PLR
+correspondente a      1.389,20
+  8. - Responsável Pelas Informações
+Nome Data Assinatura
+"""
+
+
+def test_complementary_items_extracted_with_values_and_labels():
+    matches = extract_fields_for_category("informe_empregador", _QUADRO_7_TEXT)
+    complementary = {m["field"]: m for m in matches if m["field"].startswith("complementar_")}
+
+    assert complementary["complementar_0"]["value"] == 52.74
+    assert "ODONTOPREV" in complementary["complementar_0"]["label"]
+
+    assert complementary["complementar_1"]["value"] == 4231.50
+    assert "PREVIDÊNCIA PRIVADA" in complementary["complementar_1"]["label"]
+
+    assert complementary["complementar_2"]["value"] == 1602.04
+    assert "BRADESCO SAÚDE" in complementary["complementar_2"]["label"]
+
+    assert complementary["complementar_3"]["value"] == 1389.20
+
+    for match in complementary.values():
+        assert match["form_field"] == "deductions"
+        assert {opt["id"] for opt in match["category_options"]} == {
+            "recibos_saude",
+            "previdencia_privada",
+            "outro",
+        }
+
+
+def test_complementary_items_classified_by_keyword():
+    matches = extract_fields_for_category("informe_empregador", _QUADRO_7_TEXT)
+    guesses = {m["field"]: m["category_guess"] for m in matches if m["field"].startswith("complementar_")}
+
+    # item 01: ODONTOPREV contém "PREV" mas é uma empresa de odontologia —
+    # não pode virar previdência por causa disso.
+    assert guesses["complementar_0"] == "recibos_saude"
+    assert guesses["complementar_1"] == "previdencia_privada"
+    assert guesses["complementar_2"] == "recibos_saude"
+    # item 04 (nota sobre PLR) não tem palavra-chave de saúde nem previdência,
+    # e sem AZURE_OPENAI_ENDPOINT/DEPLOYMENT configurados a LLM não roda.
+    assert guesses["complementar_3"] is None
+
+
+def test_complementary_items_skip_zero_value():
+    text = _QUADRO_7_TEXT.replace("52,74", "0,00")
+    matches = extract_fields_for_category("informe_empregador", text)
+    fields = {m["field"] for m in matches}
+    assert "complementar_0" not in fields  # item zerado é descartado
+    # os demais itens continuam presentes (índice não reaproveitado por causa disso)
+    assert any(f.startswith("complementar_") for f in fields)
+
+
+def test_complementary_section_boundary_does_not_leak_into_next_quadro():
+    matches = extract_fields_for_category("informe_empregador", _QUADRO_7_TEXT)
+    labels = " ".join(m["label"] for m in matches if m["field"].startswith("complementar_"))
+    assert "Responsável" not in labels
+
+
+def test_complementary_items_run_for_any_category():
+    matches = extract_fields_for_category("recibos_saude", _QUADRO_7_TEXT)
+    assert any(m["field"].startswith("complementar_") for m in matches)
+
+
+def test_llm_classification_skipped_without_env_vars(monkeypatch):
+    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT", raising=False)
+    from document_extractor import _classify_ambiguous_items_with_llm
+
+    assert _classify_ambiguous_items_with_llm([{"field": "x", "label": "y"}]) == {}
