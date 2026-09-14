@@ -249,6 +249,56 @@ HTML_PAGE = """
       margin-top: 4px;
     }
 
+    .checklist-item .guidance-text {
+      flex-basis: 100%;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-top: 2px;
+    }
+
+    .checklist-item .extract-btn {
+      padding: 8px 14px;
+      font-size: 0.85rem;
+    }
+
+    .checklist-item .extract-result {
+      flex-basis: 100%;
+      background: #f0f6ff;
+      border: 1px solid rgba(15, 91, 217, 0.2);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-top: 8px;
+      font-size: 0.85rem;
+    }
+
+    .extract-result .extract-warning {
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin-bottom: 6px;
+    }
+
+    .extract-result .extract-file-block {
+      margin-bottom: 8px;
+    }
+
+    .extract-result .extract-match {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 4px 0;
+    }
+
+    .extract-result .extract-match button {
+      padding: 4px 10px;
+      font-size: 0.78rem;
+    }
+
+    .extract-result .extract-message {
+      color: var(--muted);
+    }
+
     .privacy-note {
       background: rgba(15, 91, 217, 0.06);
       border: 1px dashed rgba(15, 91, 217, 0.3);
@@ -376,7 +426,7 @@ HTML_PAGE = """
     <section class="panel" id="checklist-panel">
       <h2>Organizador de Documentos</h2>
       <div class="privacy-note">
-        Você pode anexar mais de um arquivo por categoria. Os arquivos ficam apenas no seu navegador durante esta sessão — nada é enviado nem armazenado no servidor. Apenas os nomes dos arquivos são incluídos no relatório final.
+        Você pode anexar mais de um arquivo por categoria. Por padrão, os arquivos ficam só no seu navegador — apenas os nomes vão para o relatório final. Se você clicar em "Extrair dados", o conteúdo do arquivo é enviado ao servidor só para leitura automática dos valores e é descartado imediatamente após o processamento — nada fica armazenado. Os valores extraídos são sempre uma sugestão: revise antes de usar.
       </div>
       <div id="checklist-container"></div>
     </section>
@@ -516,6 +566,10 @@ HTML_PAGE = """
           label.setAttribute('for', checkbox.id);
           label.textContent = category.label;
 
+          const guidance = document.createElement('div');
+          guidance.className = 'guidance-text';
+          guidance.textContent = category.guidance || '';
+
           const fileInput = document.createElement('input');
           fileInput.type = 'file';
           fileInput.multiple = true;
@@ -525,20 +579,148 @@ HTML_PAGE = """
           fileList.className = 'file-list';
           fileList.dataset.categoryId = category.id;
 
+          const extractBtn = document.createElement('button');
+          extractBtn.type = 'button';
+          extractBtn.className = 'secondary extract-btn';
+          extractBtn.textContent = 'Extrair dados';
+          extractBtn.dataset.categoryId = category.id;
+          extractBtn.disabled = true;
+
+          const extractResult = document.createElement('div');
+          extractResult.className = 'extract-result hidden';
+          extractResult.dataset.categoryId = category.id;
+
           fileInput.addEventListener('change', () => {
             const names = Array.from(fileInput.files).map((file) => file.name);
             fileList.textContent = names.length > 0 ? names.join(', ') : '';
+            extractBtn.disabled = fileInput.files.length === 0;
+            extractResult.classList.add('hidden');
+            extractResult.innerHTML = '';
           });
+
+          extractBtn.addEventListener('click', () => extractDocuments(category, fileInput, extractBtn, extractResult));
 
           item.appendChild(checkbox);
           item.appendChild(label);
+          item.appendChild(guidance);
           item.appendChild(fileInput);
+          item.appendChild(extractBtn);
           item.appendChild(fileList);
+          item.appendChild(extractResult);
           groupDiv.appendChild(item);
         });
 
         checklistContainer.appendChild(groupDiv);
       });
+    }
+
+    async function extractDocuments(category, fileInput, extractBtn, extractResult) {
+      const files = Array.from(fileInput.files);
+      if (files.length === 0) return;
+
+      extractBtn.disabled = true;
+      extractBtn.textContent = 'Extraindo...';
+
+      const formData = new FormData();
+      formData.append('categoryId', category.id);
+      files.forEach((file) => formData.append('files', file));
+
+      try {
+        const response = await fetch('/api/extract', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          renderExtractError(extractResult, data.error || 'Erro ao extrair dados.');
+          return;
+        }
+
+        renderExtractResults(extractResult, data);
+      } catch (err) {
+        renderExtractError(extractResult, 'Falha de conexão ao extrair dados.');
+      } finally {
+        extractBtn.disabled = false;
+        extractBtn.textContent = 'Extrair dados';
+      }
+    }
+
+    function renderExtractError(container, message) {
+      container.classList.remove('hidden');
+      container.innerHTML = '';
+      const errorEl = document.createElement('div');
+      errorEl.className = 'extract-message';
+      errorEl.textContent = message;
+      container.appendChild(errorEl);
+    }
+
+    function renderExtractResults(container, data) {
+      container.classList.remove('hidden');
+      container.innerHTML = '';
+
+      const warning = document.createElement('div');
+      warning.className = 'extract-warning';
+      warning.textContent = 'Extração automática — revise os valores antes de usar.';
+      container.appendChild(warning);
+
+      data.results.forEach((fileResult) => {
+        const fileBlock = document.createElement('div');
+        fileBlock.className = 'extract-file-block';
+
+        const fileTitle = document.createElement('div');
+        fileTitle.textContent = fileResult.filename;
+        fileTitle.style.fontWeight = '600';
+        fileBlock.appendChild(fileTitle);
+
+        if (fileResult.matches && fileResult.matches.length > 0) {
+          fileResult.matches.forEach((match) => {
+            const matchRow = document.createElement('div');
+            matchRow.className = 'extract-match';
+
+            const matchLabel = document.createElement('span');
+            matchLabel.textContent = `${match.label}: ${formatMoney(match.value)}`;
+            matchRow.appendChild(matchLabel);
+
+            if (match.form_field) {
+              const useBtn = document.createElement('button');
+              useBtn.type = 'button';
+              useBtn.textContent = 'Usar este valor';
+              useBtn.addEventListener('click', () => applyExtractedValue(match, useBtn));
+              matchRow.appendChild(useBtn);
+            }
+
+            fileBlock.appendChild(matchRow);
+          });
+        }
+
+        if (fileResult.message) {
+          const messageEl = document.createElement('div');
+          messageEl.className = 'extract-message';
+          messageEl.textContent = fileResult.message;
+          fileBlock.appendChild(messageEl);
+        }
+
+        container.appendChild(fileBlock);
+      });
+    }
+
+    function applyExtractedValue(match, useBtn) {
+      const targetInput = document.getElementById(match.form_field);
+      if (!targetInput) return;
+
+      const currentValue = Number(targetInput.value || 0);
+      const needsConfirmation = currentValue !== 0 && currentValue !== match.value;
+
+      if (needsConfirmation && useBtn.dataset.confirmPending !== 'true') {
+        useBtn.dataset.confirmPending = 'true';
+        useBtn.textContent = `Substituir ${formatMoney(currentValue)}?`;
+        return;
+      }
+
+      targetInput.value = match.value;
+      useBtn.textContent = 'Valor aplicado';
+      useBtn.disabled = true;
     }
 
     function collectChecklistState() {

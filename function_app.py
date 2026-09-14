@@ -3,6 +3,7 @@ import json
 import azure.functions as func
 
 from document_checklist import get_checklist_definition
+from document_extractor import MAX_FILES_PER_REQUEST, MAX_FILE_SIZE_BYTES, extract_from_files
 from irpf_calc import compare_models
 from report_generator import generate_excel_report, generate_pdf_report
 from templates import HTML_PAGE
@@ -102,4 +103,48 @@ def report(req: func.HttpRequest) -> func.HttpResponse:
         mimetype=mimetype,
         status_code=200,
         headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.route(route="api/extract", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
+def extract(req: func.HttpRequest) -> func.HttpResponse:
+    category_id = req.form.get("categoryId") if req.form else None
+    if not category_id:
+        return func.HttpResponse(
+            json.dumps({"error": "categoryId é obrigatório."}),
+            mimetype="application/json",
+            status_code=400,
+        )
+
+    uploaded = req.files.getlist("files")
+    if not uploaded:
+        return func.HttpResponse(
+            json.dumps({"error": "Nenhum arquivo enviado."}),
+            mimetype="application/json",
+            status_code=400,
+        )
+
+    if len(uploaded) > MAX_FILES_PER_REQUEST:
+        return func.HttpResponse(
+            json.dumps({"error": f"Máximo de {MAX_FILES_PER_REQUEST} arquivos por vez."}),
+            mimetype="application/json",
+            status_code=400,
+        )
+
+    files_payload = []
+    for uploaded_file in uploaded:
+        content = uploaded_file.stream.read()
+        if len(content) > MAX_FILE_SIZE_BYTES:
+            return func.HttpResponse(
+                json.dumps({"error": f"Arquivo '{uploaded_file.filename}' excede o tamanho máximo permitido."}),
+                mimetype="application/json",
+                status_code=400,
+            )
+        files_payload.append({"filename": uploaded_file.filename, "content": content})
+
+    result = extract_from_files(category_id, files_payload)
+    return func.HttpResponse(
+        json.dumps(result),
+        mimetype="application/json",
+        status_code=200,
     )

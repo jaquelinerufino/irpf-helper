@@ -4,7 +4,8 @@ Site de apoio à declaração do IRPF, rodando como Azure Function App (Python).
 
 Funcionalidades:
 - Comparação do desconto simplificado x deduções completas, com recomendação de qual compensa mais.
-- Organizador de documentos: checklist de comprovantes comuns, com anexo de arquivo válido apenas durante a sessão do navegador (o arquivo nunca é enviado ao servidor — só o nome consta no relatório final).
+- Organizador de documentos: checklist de comprovantes comuns, com anexo de múltiplos arquivos por categoria e orientação de onde preencher cada tipo de documento no programa da Receita.
+- Extração automática de valores a partir do texto de PDFs de informes (ex.: rendimentos tributáveis, INSS, IRRF) — sob demanda, ao clicar em "Extrair dados". O conteúdo do arquivo só é enviado ao servidor nesse momento, é lido em memória e descartado imediatamente após o processamento; nada fica armazenado. Cobre PDFs com texto nativo — PDFs escaneados (imagem) não são suportados nesta versão e pedem preenchimento manual. Os valores extraídos são sempre uma sugestão, aplicada apenas com confirmação do usuário.
 - Guia passo a passo de como declarar no programa oficial da Receita Federal.
 - Download do resumo em PDF ou Excel.
 
@@ -21,9 +22,10 @@ A página fica disponível em `http://localhost:7071/home`.
 
 ## Estrutura
 
-- `function_app.py` — rotas HTTP (`/home`, `/api/calculate`, `/api/checklist`, `/api/report`).
+- `function_app.py` — rotas HTTP (`/home`, `/api/calculate`, `/api/checklist`, `/api/report`, `/api/extract`).
 - `irpf_calc.py` — lógica de cálculo (faixas do IRPF, desconto simplificado, deduções completas).
-- `document_checklist.py` — categorias do organizador de documentos.
+- `document_checklist.py` — categorias do organizador de documentos, com orientação de preenchimento por categoria.
+- `document_extractor.py` — extração de texto de PDF (pypdf) e reconhecimento de valores por regex, em memória.
 - `report_generator.py` — geração de PDF (reportlab) e Excel (openpyxl) em memória.
 - `templates.py` — página HTML/CSS/JS.
 
