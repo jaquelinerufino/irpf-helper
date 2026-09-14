@@ -2,11 +2,11 @@ import json
 
 import azure.functions as func
 
-from document_checklist import get_checklist_definition
-from document_extractor import MAX_FILE_SIZE_BYTES, MAX_FILES_PER_REQUEST, extract_from_files
-from irpf_calc import compare_models
-from report_generator import generate_excel_report, generate_pdf_report
-from templates import HTML_PAGE
+from irpf_helper.document_checklist import get_checklist_definition
+from irpf_helper.document_extractor import MAX_FILE_SIZE_BYTES, MAX_FILES_PER_REQUEST, extract_from_files
+from irpf_helper.irpf_calc import compare_models
+from irpf_helper.report_generator import generate_excel_report, generate_pdf_report
+from irpf_helper.templates import HTML_PAGE
 
 app = func.FunctionApp()
 

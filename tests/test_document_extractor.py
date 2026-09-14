@@ -1,4 +1,4 @@
-from document_extractor import extract_fields_for_category, parse_brl_number
+from irpf_helper.document_extractor import extract_fields_for_category, parse_brl_number
 
 
 def test_parse_brl_number():
@@ -192,6 +192,6 @@ def test_complementary_items_run_for_any_category():
 def test_llm_classification_skipped_without_env_vars(monkeypatch):
     monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
     monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT", raising=False)
-    from document_extractor import _classify_ambiguous_items_with_llm
+    from irpf_helper.document_extractor import _classify_ambiguous_items_with_llm
 
     assert _classify_ambiguous_items_with_llm([{"field": "x", "label": "y"}]) == {}

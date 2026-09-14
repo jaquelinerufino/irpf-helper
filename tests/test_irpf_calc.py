@@ -1,6 +1,6 @@
 import pytest
 
-from irpf_calc import (
+from irpf_helper.irpf_calc import (
     SIMPLIFIED_DISCOUNT_CAP,
     calculate_complete,
     calculate_simplified,

@@ -37,6 +37,7 @@ sequenceDiagram
     participant B as Navegador
     participant A as POST /api/extract
     participant E as document_extractor
+    participant L as Azure OpenAI (opcional)
     participant M as Memória da requisição
 
     U->>B: Seleciona PDF(s) e solicita extração
@@ -46,6 +47,10 @@ sequenceDiagram
     A->>E: extract_from_files(categoryId, arquivos)
     E->>E: Abre PDF e extrai camada de texto
     E->>E: Aplica padrões por categoria
+    opt Item complementar sem categoria e Azure OpenAI configurado
+        E->>L: Envia rótulo do item para classificação
+        L-->>E: Sugestão de categoria
+    end
     E-->>A: Sugestões, avisos ou erros por arquivo
     A-->>B: HTTP 200 + JSON
     B-->>U: Mostra sugestões para confirmação
@@ -62,7 +67,7 @@ Tratamento esperado:
 | PDF escaneado/sem texto | Resultado com `status: no_text`; preenchimento manual. |
 | Texto sem padrão reconhecido | Resultado `ok`, sem sugestões. |
 
-O extrator não faz OCR e não garante que um valor reconhecido esteja correto. A confirmação humana é obrigatória no fluxo de interface.
+O extrator não faz OCR e não garante que um valor reconhecido ou uma categoria sugerida esteja correto. A confirmação humana é obrigatória no fluxo de interface. A classificação com Azure OpenAI é opcional e, se indisponível, o item permanece sem categoria sugerida.
 
 ## 3. Geração de relatório
 

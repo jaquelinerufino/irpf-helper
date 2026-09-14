@@ -10,8 +10,8 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from document_checklist import DOCUMENT_CATEGORIES
-from irpf_calc import format_currency
+from .document_checklist import DOCUMENT_CATEGORIES
+from .irpf_calc import format_currency
 
 RECOMMENDED_LABELS = {
     "simplified": "Desconto Simplificado",

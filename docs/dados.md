@@ -7,6 +7,7 @@
 | Dados financeiros | salário, INSS, deduções, pensão, rendimentos extras | Sensível/financeiro | Formulário | Estimar e comparar imposto. |
 | Dados de dependentes | quantidade de dependentes | Pessoal | Formulário | Calcular dedução anual. |
 | Documentos fiscais | informe de rendimentos, recibos e nomes de arquivos | Confidencial | Upload do usuário | Sugerir preenchimento e compor checklist. |
+| Rótulos de itens ambíguos | descrição de item complementar em informe | Confidencial | Texto extraído do PDF | Classificação opcional por Azure OpenAI. |
 | Resultado | bases de cálculo, imposto estimado, recomendação | Financeiro derivado | Motor de cálculo | Exibir e exportar resumo. |
 | Checklist | categoria, marcação e nomes dos arquivos | Pessoal/operacional | Interface | Organizar documentos e relatório. |
 
@@ -21,7 +22,7 @@ flowchart LR
     processing -. "não persiste" .-> discard["Bytes e objetos descartados\nao fim da requisição"]
 ```
 
-Pelo código atual, não há banco de dados, blob storage, fila ou gravação local de uploads. Os bytes de PDFs são lidos em memória para a requisição de extração e os relatórios também são montados em memória antes da resposta.
+Pelo código atual, não há banco de dados, blob storage, fila ou gravação local de uploads. Os bytes de PDFs são lidos em memória para a requisição de extração e os relatórios também são montados em memória antes da resposta. Quando `AZURE_OPENAI_ENDPOINT` e `AZURE_OPENAI_DEPLOYMENT` estão configurados, rótulos de itens complementares ambíguos podem ser enviados ao Azure OpenAI para classificação.
 
 ## Controles existentes
 
@@ -30,11 +31,13 @@ Pelo código atual, não há banco de dados, blob storage, fila ou gravação lo
 - Sem OCR: documentos escaneados não têm sua imagem interpretada.
 - Arquivos protegidos por senha e PDFs ilegíveis retornam erro tratável.
 - Sugestões extraídas não são aplicadas sem confirmação do usuário na interface.
+- A classificação por Azure OpenAI é opcional, tem timeout de 15 segundos e falhas deixam o item sem sugestão de categoria.
 - O relatório é retornado como download, sem persistência pelo aplicativo.
 
 ## Limites e cuidados operacionais
 
 - “Processamento em memória” não elimina a necessidade de controlar logs, telemetria, dumps de erro e políticas da plataforma Azure. Não registre conteúdo de formulários, PDFs, tokens ou dados fiscais em logs.
+- A classificação opcional encaminha rótulos de itens ambíguos ao Azure OpenAI; avalie essa transferência e a configuração de privacidade do recurso antes de habilitá-la.
 - Os dados continuam sujeitos ao transporte e à infraestrutura do provedor de nuvem. Use sempre HTTPS e revise a configuração de observabilidade antes de produção.
 - O usuário é responsável por proteger os PDFs e relatórios salvos no seu dispositivo.
 - Antes de introduzir persistência, OCR, analytics ou integrações externas, faça uma avaliação de privacidade/LGPD, defina base legal, retenção, controle de acesso e processo de exclusão.

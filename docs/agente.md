@@ -2,7 +2,7 @@
 
 ## Escopo
 
-Este projeto **não possui um agente de IA como componente de produção**. A palavra “agente”, neste documento, significa o assistente de desenvolvimento (humano ou automatizado) que altera, revisa ou opera o repositório.
+Este projeto não possui um agente autônomo em produção. Ele possui uma integração opcional com Azure OpenAI para classificar itens complementares ambíguos extraídos de informes. A palavra “agente”, neste documento, significa o assistente de desenvolvimento (humano ou automatizado) que altera, revisa ou opera o repositório.
 
 O agente deve preservar o papel do IRPF Helper: apoio ao planejamento, sem se apresentar como fonte oficial, contador, sistema de transmissão ou aconselhamento tributário definitivo.
 
@@ -18,11 +18,11 @@ O agente deve preservar o papel do IRPF Helper: apoio ao planejamento, sem se ap
 
 | Área | Procedimento obrigatório |
 | --- | --- |
-| `irpf_calc.py` | Alterar constantes e testes juntos; validar casos de faixa, teto e recomendação. |
+| `irpf_helper/irpf_calc.py` | Alterar constantes e testes juntos; validar casos de faixa, teto e recomendação. |
 | `function_app.py` | Documentar novas rotas, payloads, respostas e erros no README. |
-| `document_extractor.py` | Adicionar testes com texto sintético representativo; não adicionar PDFs reais de usuários ao repositório. |
-| `report_generator.py` | Verificar que PDF/XLSX é gerado em memória e que os campos refletem o contrato da API. |
-| `templates.py` | Manter confirmação explícita para qualquer valor sugerido por extração. |
+| `irpf_helper/document_extractor.py` | Adicionar testes com texto sintético representativo; não adicionar PDFs reais de usuários ao repositório. |
+| `irpf_helper/report_generator.py` | Verificar que PDF/XLSX é gerado em memória e que os campos refletem o contrato da API. |
+| `irpf_helper/templates.py` | Manter confirmação explícita para qualquer valor sugerido por extração. |
 | Infraestrutura | Não colocar credenciais, connection strings ou dados fiscais no controle de versão. |
 
 ## Rotina de trabalho
@@ -39,6 +39,7 @@ O agente deve preservar o papel do IRPF Helper: apoio ao planejamento, sem se ap
 - Nunca exponha conteúdo de PDFs, valores fiscais ou nomes de arquivos em logs, commits, exemplos públicos ou tickets.
 - Não adicione armazenamento persistente, OCR ou integração de terceiros sem decisão explícita de produto e análise de privacidade.
 - Não trate valores extraídos como verdade; preserve a confirmação do usuário.
+- Não habilite ou altere a classificação Azure OpenAI sem avaliar os dados enviados e manter um fallback seguro quando o serviço não estiver disponível.
 - Não altere regras tributárias com base em memória. Use fontes oficiais e registre o ano de vigência.
 
 ## Definição de pronto

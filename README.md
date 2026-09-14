@@ -23,7 +23,7 @@ Os arquivos enviados para extração são processados somente quando o botão **
 
 ## Limitações e premissas do cálculo
 
-As constantes em [`irpf_calc.py`](irpf_calc.py) foram definidas para o **ano-calendário de 2024** e incluem faixas, teto do desconto simplificado e dedução anual por dependente. Atualize-as antes de usar o projeto para outro ano-calendário.
+As constantes em [`irpf_helper/irpf_calc.py`](irpf_helper/irpf_calc.py) foram definidas para o **ano-calendário de 2024** e incluem faixas, teto do desconto simplificado e dedução anual por dependente. Atualize-as antes de usar o projeto para outro ano-calendário.
 
 O cálculo considera:
 
@@ -41,6 +41,10 @@ Ele não modela todas as situações tributárias, como rendimentos isentos ou s
 - `pip`
 
 Para publicar no Azure, também são necessários Azure CLI e uma Function App já criada.
+
+### Classificação opcional com Azure OpenAI
+
+Para classificar itens complementares de informes que não foram reconhecidos pelas regras locais, configure `AZURE_OPENAI_ENDPOINT` e `AZURE_OPENAI_DEPLOYMENT`. A aplicação usa `DefaultAzureCredential`; em produção, atribua à identidade gerenciada da Function App uma permissão compatível no recurso Azure OpenAI. Sem essas variáveis ou em caso de falha, a classificação é ignorada e o usuário escolhe a categoria manualmente.
 
 ## Executar localmente
 
@@ -167,13 +171,11 @@ Use `"pdf"` ou `"xlsx"` em `format`. A resposta é um download com o tipo MIME c
 
 | Arquivo | Responsabilidade |
 | --- | --- |
-| [`function_app.py`](function_app.py) | Rotas HTTP e validação básica das requisições. |
-| [`irpf_calc.py`](irpf_calc.py) | Faixas, deduções e comparação dos modelos. |
-| [`document_checklist.py`](document_checklist.py) | Categorias e orientações do checklist. |
-| [`document_extractor.py`](document_extractor.py) | Leitura de PDFs e reconhecimento de valores por expressões regulares. |
-| [`report_generator.py`](report_generator.py) | Relatórios PDF e Excel gerados em memória. |
-| [`templates.py`](templates.py) | Página HTML, CSS e JavaScript servida em `/home`. |
-| [`tests/`](tests) | Testes automatizados da lógica tributária e extração. |
+| [`function_app.py`](function_app.py) | Ponto de entrada do Azure Functions e rotas HTTP. |
+| [`irpf_helper/`](irpf_helper) | Pacote da aplicação: cálculo, checklist, extração, relatórios e interface. |
+| [`irpf_helper/irpf_calc.py`](irpf_helper/irpf_calc.py) | Faixas, deduções e comparação dos modelos. |
+| [`irpf_helper/document_extractor.py`](irpf_helper/document_extractor.py) | Leitura de PDFs, reconhecimento de valores e classificação opcional com Azure OpenAI. |
+| [`tests/`](tests) | Testes automatizados do pacote da aplicação. |
 
 ## Deploy no Azure
 

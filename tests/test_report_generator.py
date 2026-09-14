@@ -2,8 +2,8 @@ import io
 
 from openpyxl import load_workbook
 
-from irpf_calc import compare_models
-from report_generator import (
+from irpf_helper.irpf_calc import compare_models
+from irpf_helper.report_generator import (
     _applied_items_rows,
     _declaration_rows,
     generate_excel_report,
